@@ -1,51 +1,31 @@
+import { useMemo } from "react";
 import { Check, ChevronDown, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import {
+  materialOptions,
+  products,
+  sortOptions,
+  typeOptions,
+  useRazorCatalogStore,
+  type RazorProduct,
+} from "@/stores/razor-catalog-store";
 
 type FilterOption = {
   label: string;
   selected: boolean;
+  onToggle: () => void;
 };
 
-type Product = {
-  name: string;
-  material: string;
-  price: string;
-  selected?: boolean;
-};
-
-const materialOptions: FilterOption[] = [
-  { label: "Chrome", selected: true },
-  { label: "Gunmetal", selected: true },
-  { label: "White Chrome", selected: false },
-  { label: "Rose Gold", selected: false },
-];
-
-const typeOptions: FilterOption[] = [
-  { label: "Adjustable", selected: true },
-  { label: "Fixed", selected: false },
-];
-
-const activeFilters = ["Chrome", "Gunmetal", "Adjustable", "In stock"];
-
-const products: Product[] = [
-  {
-    name: "Rockwell 6S Adjustable",
-    material: "Stainless Steel",
-    price: "$120",
-    selected: true,
-  },
-  { name: "Rockwell 6C", material: "Chrome", price: "$80" },
-  { name: "Rockwell T2", material: "Gunmetal", price: "$50" },
-  { name: "Rockwell R1", material: "White Chrome", price: "$40" },
-  { name: "Rockwell Model T", material: "Matte Black", price: "$150" },
-  { name: "Rockwell 2C", material: "Chrome", price: "$30" },
-];
-
-function FilterCheckbox({ label, selected }: FilterOption) {
+function FilterCheckbox({ label, selected, onToggle }: FilterOption) {
   return (
-    <div className="flex h-[18px] w-full items-center gap-[10px] overflow-hidden">
+    <button
+      type="button"
+      onClick={onToggle}
+      className="flex h-[18px] w-full items-center gap-[10px] overflow-hidden text-left"
+      aria-pressed={selected}
+    >
       <span
         className={[
           "flex size-[18px] shrink-0 items-center justify-center rounded-[4px] border-[1.5px]",
@@ -60,7 +40,7 @@ function FilterCheckbox({ label, selected }: FilterOption) {
       <span className="whitespace-nowrap text-[14px] font-normal leading-[normal] text-[#1a1a1a]">
         {label}
       </span>
-    </div>
+    </button>
   );
 }
 
@@ -85,11 +65,19 @@ function FilterGroup({
   );
 }
 
-function ActiveFilterChip({ label }: { label: string }) {
+function ActiveFilterChip({
+  label,
+  onRemove,
+}: {
+  label: string;
+  onRemove: () => void;
+}) {
   return (
     <button
       type="button"
+      onClick={onRemove}
       className="flex shrink-0 items-center gap-[6px] rounded-full bg-[#efefee] px-[10px] py-[6px] text-[13px] font-medium leading-none text-[#1a1a1a]"
+      aria-label={`Remove ${label} filter`}
     >
       <span>{label}</span>
       <X className="size-[11px] text-[#6b7280]" />
@@ -97,7 +85,16 @@ function ActiveFilterChip({ label }: { label: string }) {
   );
 }
 
-function ProductCard({ name, material, price, selected = false }: Product) {
+function ProductCard({
+  name,
+  material,
+  price,
+  selected,
+  onSelect,
+}: Pick<RazorProduct, "name" | "material" | "price"> & {
+  selected: boolean;
+  onSelect: () => void;
+}) {
   return (
     <Card className="min-w-0 flex-1 overflow-hidden rounded-[12px] border-[#e5e5e5] bg-white shadow-none">
       <div className="h-[150px] w-full bg-[#ececeb]" />
@@ -115,6 +112,7 @@ function ProductCard({ name, material, price, selected = false }: Product) {
           <Button
             type="button"
             variant={selected ? "default" : "outline"}
+            onClick={onSelect}
             className={[
               "h-8 rounded-[8px] px-3 py-2 text-[13px] font-medium shadow-none",
               selected
@@ -138,6 +136,66 @@ function ProductCard({ name, material, price, selected = false }: Product) {
 }
 
 export function RazorCatalogFilterPanel() {
+  const selectedMaterials = useRazorCatalogStore(
+    (state) => state.selectedMaterials,
+  );
+  const selectedTypes = useRazorCatalogStore((state) => state.selectedTypes);
+  const inStockOnly = useRazorCatalogStore((state) => state.inStockOnly);
+  const searchQuery = useRazorCatalogStore((state) => state.searchQuery);
+  const sortOption = useRazorCatalogStore((state) => state.sortOption);
+  const selectedProductId = useRazorCatalogStore(
+    (state) => state.selectedProductId,
+  );
+  const toggleMaterial = useRazorCatalogStore((state) => state.toggleMaterial);
+  const toggleType = useRazorCatalogStore((state) => state.toggleType);
+  const toggleInStockOnly = useRazorCatalogStore(
+    (state) => state.toggleInStockOnly,
+  );
+  const setSearchQuery = useRazorCatalogStore((state) => state.setSearchQuery);
+  const setSortOption = useRazorCatalogStore((state) => state.setSortOption);
+  const selectProduct = useRazorCatalogStore((state) => state.selectProduct);
+  const removeFilter = useRazorCatalogStore((state) => state.removeFilter);
+  const clearFilters = useRazorCatalogStore((state) => state.clearFilters);
+
+  const activeFilters = [
+    ...selectedMaterials,
+    ...selectedTypes,
+    ...(inStockOnly ? ["In stock"] : []),
+  ];
+
+  const filteredProducts = useMemo(() => {
+    const normalizedSearch = searchQuery.trim().toLowerCase();
+    const visibleProducts = products.filter((product) => {
+      const matchesMaterial =
+        selectedMaterials.length === 0 ||
+        selectedMaterials.includes(product.finish);
+      const matchesType =
+        selectedTypes.length === 0 || selectedTypes.includes(product.type);
+      const matchesStock = !inStockOnly || product.inStock;
+      const matchesSearch =
+        normalizedSearch.length === 0 ||
+        [product.name, product.material, product.finish, product.type]
+          .join(" ")
+          .toLowerCase()
+          .includes(normalizedSearch);
+
+      return matchesMaterial && matchesType && matchesStock && matchesSearch;
+    });
+
+    if (sortOption === "Price: Low to high") {
+      return [...visibleProducts].sort((a, b) => a.priceValue - b.priceValue);
+    }
+
+    if (sortOption === "Price: High to low") {
+      return [...visibleProducts].sort((a, b) => b.priceValue - a.priceValue);
+    }
+
+    return visibleProducts;
+  }, [inStockOnly, searchQuery, selectedMaterials, selectedTypes, sortOption]);
+
+  const nextSortOption =
+    sortOptions[(sortOptions.indexOf(sortOption) + 1) % sortOptions.length];
+
   return (
     <main className="min-h-screen bg-white p-8 text-[#1a1a1a]">
       <section className="mx-auto flex w-full max-w-[1120px] flex-col gap-6 overflow-hidden rounded-[16px] bg-[#f5f5f4] p-8">
@@ -158,20 +216,41 @@ export function RazorCatalogFilterPanel() {
               </h2>
               <button
                 type="button"
+                onClick={clearFilters}
                 className="whitespace-nowrap text-[13px] font-medium leading-[normal] text-[#6b7280]"
               >
                 Clear all
               </button>
             </div>
 
-            <div className="flex w-full items-center overflow-hidden rounded-[8px] border border-[#e5e5e5] bg-[#f9f9f8] px-3 py-[10px]">
-              <span className="whitespace-nowrap text-[14px] font-normal leading-[normal] text-[#6b7280]">
-                Search razors
-              </span>
-            </div>
+            <label className="sr-only" htmlFor="razor-search">
+              Search razors
+            </label>
+            <input
+              id="razor-search"
+              type="search"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder="Search razors"
+              className="flex w-full items-center overflow-hidden rounded-[8px] border border-[#e5e5e5] bg-[#f9f9f8] px-3 py-[10px] text-[14px] font-normal leading-[normal] text-[#1a1a1a] outline-none placeholder:text-[#6b7280]"
+            />
 
-            <FilterGroup label="Material" options={materialOptions} />
-            <FilterGroup label="Type" options={typeOptions} />
+            <FilterGroup
+              label="Material"
+              options={materialOptions.map((material) => ({
+                label: material,
+                selected: selectedMaterials.includes(material),
+                onToggle: () => toggleMaterial(material),
+              }))}
+            />
+            <FilterGroup
+              label="Type"
+              options={typeOptions.map((type) => ({
+                label: type,
+                selected: selectedTypes.includes(type),
+                onToggle: () => toggleType(type),
+              }))}
+            />
 
             <div className="flex w-full items-center justify-between overflow-hidden">
               <span className="whitespace-nowrap text-[14px] font-normal leading-[normal] text-[#1a1a1a]">
@@ -179,10 +258,20 @@ export function RazorCatalogFilterPanel() {
               </span>
               <button
                 type="button"
-                className="relative h-[22px] w-[38px] shrink-0 rounded-full bg-[#1a1a1a]"
+                onClick={toggleInStockOnly}
+                className={[
+                  "relative h-[22px] w-[38px] shrink-0 rounded-full",
+                  inStockOnly ? "bg-[#1a1a1a]" : "bg-[#d6d6d4]",
+                ].join(" ")}
                 aria-label="In stock only"
+                aria-pressed={inStockOnly}
               >
-                <span className="absolute right-[2px] top-[3px] size-4 rounded-full bg-white" />
+                <span
+                  className={[
+                    "absolute top-[3px] size-4 rounded-full bg-white",
+                    inStockOnly ? "right-[2px]" : "left-[2px]",
+                  ].join(" ")}
+                />
               </button>
             </div>
           </Card>
@@ -190,35 +279,46 @@ export function RazorCatalogFilterPanel() {
           <section className="flex min-w-0 flex-1 flex-col gap-4 overflow-hidden">
             <div className="flex w-full items-center justify-between overflow-hidden">
               <p className="whitespace-nowrap text-[15px] font-semibold leading-[normal] text-[#1a1a1a]">
-                12 razors
+                {filteredProducts.length} razors
               </p>
               <Button
                 type="button"
                 variant="outline"
+                onClick={() => setSortOption(nextSortOption)}
                 className="h-8 gap-2 rounded-[8px] border-[#e5e5e5] bg-white px-3 py-2 text-[13px] font-medium text-[#1a1a1a] shadow-none hover:bg-white hover:text-[#1a1a1a]"
               >
-                Sort: Featured
+                Sort: {sortOption}
                 <ChevronDown className="size-3 text-[#6b7280]" />
               </Button>
             </div>
 
             <div className="flex w-full flex-wrap items-start gap-2 overflow-hidden">
               {activeFilters.map((filter) => (
-                <ActiveFilterChip key={filter} label={filter} />
+                <ActiveFilterChip
+                  key={filter}
+                  label={filter}
+                  onRemove={() => removeFilter(filter)}
+                />
               ))}
             </div>
 
             <div className="flex w-full flex-col gap-4 overflow-hidden">
-              {[0, 2, 4].map((startIndex) => (
-                <div
-                  key={startIndex}
-                  className="flex w-full items-start gap-4 overflow-hidden"
-                >
-                  {products.slice(startIndex, startIndex + 2).map((product) => (
-                    <ProductCard key={product.name} {...product} />
+              {filteredProducts.length > 0 ? (
+                <div className="grid w-full grid-cols-2 gap-4 overflow-hidden">
+                  {filteredProducts.map((product) => (
+                    <ProductCard
+                      key={product.id}
+                      {...product}
+                      selected={selectedProductId === product.id}
+                      onSelect={() => selectProduct(product.id)}
+                    />
                   ))}
                 </div>
-              ))}
+              ) : (
+                <div className="rounded-[12px] border border-[#e5e5e5] bg-white p-6 text-[14px] text-[#6b7280]">
+                  No razors match the selected filters.
+                </div>
+              )}
             </div>
           </section>
         </div>
